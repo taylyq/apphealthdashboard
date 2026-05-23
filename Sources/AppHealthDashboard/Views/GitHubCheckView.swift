@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct GitHubCheckView: View {
-    @State private var repo = ""
+    @EnvironmentObject var appState: AppState
     @State private var token = ""
     
     @State private var isRefreshing = false
@@ -33,7 +33,7 @@ public struct GitHubCheckView: View {
                         HStack {
                             Text("Repository")
                                 .frame(width: 85, alignment: .leading)
-                            TextField("owner/repo (e.g. apple/swift)", text: $repo)
+                            TextField("owner/repo (e.g. apple/swift)", text: $appState.selectedRepo)
                                 .textFieldStyle(.roundedBorder)
                         }
                         
@@ -65,7 +65,7 @@ public struct GitHubCheckView: View {
                                 Label("Refresh Status", systemImage: "arrow.clockwise")
                             }
                         }
-                        .disabled(isRefreshing || repo.isEmpty)
+                        .disabled(isRefreshing || appState.selectedRepo.isEmpty)
                         .buttonStyle(.borderedProminent)
                     }
                     .padding(.top, 5)
@@ -212,12 +212,12 @@ public struct GitHubCheckView: View {
     }
     
     private func prePopulateSettings() {
-        if let r = EnvReader.get("GITHUB_REPO") { repo = r }
+        if let r = EnvReader.get("GITHUB_REPO") { appState.selectedRepo = r }
         if let t = EnvReader.get("GITHUB_TOKEN") { token = t }
     }
     
     private func refreshAll() {
-        guard !repo.isEmpty else { return }
+        guard !appState.selectedRepo.isEmpty else { return }
         isRefreshing = true
         errorMessage = nil
         
@@ -226,7 +226,7 @@ public struct GitHubCheckView: View {
         Task {
             do {
                 let status = try await monitor.fetchOverallStatus()
-                let runs = try await monitor.fetchLatestWorkflowRuns(for: repo)
+                let runs = try await monitor.fetchLatestWorkflowRuns(for: appState.selectedRepo)
                 
                 DispatchQueue.main.async {
                     withAnimation {

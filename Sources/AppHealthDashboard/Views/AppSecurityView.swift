@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 public struct AppSecurityView: View {
+    @EnvironmentObject var appState: AppState
     @State private var selectedAppPath: String = ""
     @State private var isDragging = false
     @State private var isScanning = false
@@ -413,6 +414,18 @@ public struct AppSecurityView: View {
         
         addToHistory(path: selectedAppPath)
         
+        // Auto-detect and switch GitHub repo if app is inside a Git repository
+        if let gitRepo = findGitRepo(for: selectedAppPath) {
+            DispatchQueue.main.async {
+                withAnimation {
+                    self.appState.selectedRepo = gitRepo
+                }
+            }
+        }
+        
+        // Auto-detect and load MySQL credentials from a local .env file
+        findAndLoadEnv(for: selectedAppPath)
+        
         let scanner = AppSecurityScanner()
         Task {
             let res = await scanner.scan(bundlePath: selectedAppPath)
@@ -443,6 +456,123 @@ public struct AppSecurityView: View {
         withAnimation {
             self.scanHistory = []
             UserDefaults.standard.removeObject(forKey: "com.taytay.AppHealthDashboard.scanHistory")
+        }
+    }
+    
+    private func findGitRepo(for path: String) -> String? {
+        let fileManager = FileManager.default
+        var currentURL = URL(fileURLWithPath: path)
+        
+        // Traverse up the directory tree to find a .git folder
+        for _ in 0..<5 {
+            let gitDir = currentURL.appendingPathComponent(".git")
+            if fileManager.fileExists(atPath: gitDir.path) {
+                return runGitRemoteUrl(in: currentURL.path)
+            }
+            currentURL = currentURL.deletingLastPathComponent()
+            if currentURL.path == "/" || currentURL.path.isEmpty { break }
+        }
+        return nil
+    }
+    
+    private func runGitRemoteUrl(in directory: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["remote", "get-url", "origin"]
+        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                return parseGitHubRepo(from: output)
+            }
+        } catch {
+            print("Failed to run git remote get-url: \(error)")
+        }
+        return nil
+    }
+    
+    private func parseGitHubRepo(from urlString: String) -> String? {
+        var cleanUrl = urlString
+        if cleanUrl.hasSuffix(".git") {
+            cleanUrl = String(cleanUrl.dropLast(4))
+        }
+        
+        if cleanUrl.contains("github.com") {
+            if let range = cleanUrl.range(of: "github.com/") {
+                let suffix = cleanUrl[range.upperBound...]
+                return String(suffix)
+            } else if let range = cleanUrl.range(of: "github.com:") {
+                let suffix = cleanUrl[range.upperBound...]
+                return String(suffix)
+            }
+        }
+        return nil
+    }
+    
+    private func findAndLoadEnv(for path: String) {
+        let fileManager = FileManager.default
+        var currentURL = URL(fileURLWithPath: path)
+        
+        // Traverse up the directory tree to find a .env file
+        for _ in 0..<5 {
+            let envFile = currentURL.appendingPathComponent(".env")
+            if fileManager.fileExists(atPath: envFile.path) {
+                loadEnvFile(at: envFile.path)
+                return
+            }
+            currentURL = currentURL.deletingLastPathComponent()
+            if currentURL.path == "/" || currentURL.path.isEmpty { break }
+        }
+        
+        // Fallback: check inside bundle Contents/Resources/.env
+        let bundleEnv = URL(fileURLWithPath: path).appendingPathComponent("Contents/Resources/.env")
+        if fileManager.fileExists(atPath: bundleEnv.path) {
+            loadEnvFile(at: bundleEnv.path)
+        }
+    }
+    
+    private func loadEnvFile(at path: String) {
+        do {
+            let content = try String(contentsOfFile: path, encoding: .utf8)
+            let lines = content.components(separatedBy: .newlines)
+            var env: [String: String] = [:]
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+                let parts = trimmed.split(separator: "=", maxSplits: 1).map(String.init)
+                if parts.count == 2 {
+                    let key = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                    var val = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if (val.hasPrefix("\"") && val.hasSuffix("\"")) || (val.hasPrefix("'") && val.hasSuffix("'")) {
+                        val = String(val.dropFirst().dropLast())
+                    }
+                    env[key] = val
+                }
+            }
+            
+            // Update AppState credentials
+            DispatchQueue.main.async {
+                withAnimation {
+                    if let host = env["DB_HOST"] { self.appState.dbHost = host }
+                    if let port = env["DB_PORT"] { self.appState.dbPort = port }
+                    if let user = env["DB_USER"] { self.appState.dbUser = user }
+                    if let pass = env["DB_PASSWORD"] { self.appState.dbPass = pass }
+                    if let name = env["DB_NAME"] { self.appState.dbName = name }
+                    
+                    // Also reload repository if GITHUB_REPO is specified
+                    if let repo = env["GITHUB_REPO"] { self.appState.selectedRepo = repo }
+                }
+            }
+        } catch {
+            print("Failed to load env file at \(path): \(error)")
         }
     }
 }

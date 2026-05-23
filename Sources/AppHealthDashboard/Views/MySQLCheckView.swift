@@ -1,12 +1,7 @@
 import SwiftUI
 
 public struct MySQLCheckView: View {
-    @State private var host = ""
-    @State private var portString = "3306"
-    @State private var user = ""
-    @State private var password = ""
-    @State private var database = ""
-    
+    @EnvironmentObject var appState: AppState
     @State private var isTesting = false
     @State private var connectionResult: MySQLConnector.ConnectionResult? = nil
     
@@ -34,35 +29,35 @@ public struct MySQLCheckView: View {
                         HStack {
                             Text("Host")
                                 .frame(width: 80, alignment: .leading)
-                            TextField("e.g. sql123.hostinger.com", text: $host)
+                            TextField("e.g. sql123.hostinger.com", text: $appState.dbHost)
                                 .textFieldStyle(.roundedBorder)
                         }
                         
                         HStack {
                             Text("Port")
                                 .frame(width: 80, alignment: .leading)
-                            TextField("3306", text: $portString)
+                            TextField("3306", text: $appState.dbPort)
                                 .textFieldStyle(.roundedBorder)
                         }
                         
                         HStack {
                             Text("User")
                                 .frame(width: 80, alignment: .leading)
-                            TextField("Database user name", text: $user)
+                            TextField("Database user name", text: $appState.dbUser)
                                 .textFieldStyle(.roundedBorder)
                         }
                         
                         HStack {
                             Text("Password")
                                 .frame(width: 80, alignment: .leading)
-                            SecureField("Database password", text: $password)
+                            SecureField("Database password", text: $appState.dbPass)
                                 .textFieldStyle(.roundedBorder)
                         }
                         
                         HStack {
                             Text("Database")
                                 .frame(width: 80, alignment: .leading)
-                            TextField("Database name", text: $database)
+                            TextField("Database name", text: $appState.dbName)
                                 .textFieldStyle(.roundedBorder)
                         }
                     }
@@ -88,7 +83,7 @@ public struct MySQLCheckView: View {
                             }
                         }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(isTesting || host.isEmpty || user.isEmpty || database.isEmpty)
+                        .disabled(isTesting || appState.dbHost.isEmpty || appState.dbUser.isEmpty || appState.dbName.isEmpty)
                         .buttonStyle(.borderedProminent)
                     }
                     .padding(.top, 5)
@@ -149,25 +144,25 @@ public struct MySQLCheckView: View {
     }
     
     private func prePopulateCredentials() {
-        if let h = EnvReader.get("DB_HOST") { host = h }
-        if let p = EnvReader.get("DB_PORT") { portString = p }
-        if let u = EnvReader.get("DB_USER") { user = u }
-        if let pwd = EnvReader.get("DB_PASSWORD") { password = pwd }
-        if let db = EnvReader.get("DB_NAME") { database = db }
+        if let h = EnvReader.get("DB_HOST") { appState.dbHost = h }
+        if let p = EnvReader.get("DB_PORT") { appState.dbPort = p }
+        if let u = EnvReader.get("DB_USER") { appState.dbUser = u }
+        if let pwd = EnvReader.get("DB_PASSWORD") { appState.dbPass = pwd }
+        if let db = EnvReader.get("DB_NAME") { appState.dbName = db }
     }
     
     private func testConnection() {
-        let portVal = Int(portString) ?? 3306
+        let portVal = Int(appState.dbPort) ?? 3306
         isTesting = true
         connectionResult = nil
         
         Task {
             let res = await MySQLConnector.testConnection(
-                host: host,
+                host: appState.dbHost,
                 port: portVal,
-                username: user,
-                password: password,
-                database: database
+                username: appState.dbUser,
+                password: appState.dbPass,
+                database: appState.dbName
             )
             DispatchQueue.main.async {
                 withAnimation {

@@ -1,6 +1,7 @@
 import SwiftUI
 
 public struct MainView: View {
+    @StateObject private var appState = AppState()
     @State private var selectedTab: Tab? = .mysql
     
     enum Tab: Hashable {
@@ -48,6 +49,7 @@ public struct MainView: View {
             // Default view
             MySQLCheckView()
         }
+        .environmentObject(appState)
         .frame(minWidth: 960, minHeight: 640)
     }
 }
