@@ -207,7 +207,7 @@ public struct GitHubCheckView: View {
         .onAppear {
             refreshAll()
         }
-        .onChange(of: appState.activeAppPath) { oldValue, newValue in
+        .onChange(of: appState.selectedRepo) { oldValue, newValue in
             refreshAll()
         }
     }
@@ -218,16 +218,21 @@ public struct GitHubCheckView: View {
     }
     
     private func refreshAll() {
-        guard !appState.selectedRepo.isEmpty else { return }
         isRefreshing = true
         errorMessage = nil
         
         let monitor = GitHubMonitor(token: token.isEmpty ? nil : token)
+        let repo = appState.selectedRepo
         
         Task {
             do {
                 let status = try await monitor.fetchOverallStatus()
-                let runs = try await monitor.fetchLatestWorkflowRuns(for: appState.selectedRepo)
+                let runs: [GitHubWorkflowRun]
+                if !repo.isEmpty {
+                    runs = try await monitor.fetchLatestWorkflowRuns(for: repo)
+                } else {
+                    runs = []
+                }
                 
                 DispatchQueue.main.async {
                     withAnimation {

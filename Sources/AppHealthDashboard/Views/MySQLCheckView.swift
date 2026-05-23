@@ -141,6 +141,15 @@ public struct MySQLCheckView: View {
         .onChange(of: appState.activeAppPath) { oldValue, newValue in
             connectionResult = nil
         }
+        .onChange(of: appState.dbHost) { oldValue, newValue in
+            connectionResult = nil
+        }
+        .onChange(of: appState.dbUser) { oldValue, newValue in
+            connectionResult = nil
+        }
+        .onChange(of: appState.dbName) { oldValue, newValue in
+            connectionResult = nil
+        }
     }
     
     private func prePopulateCredentials() {
