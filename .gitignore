@@ -1,0 +1,14 @@
+# Swift Package Manager build files
+.build/
+Packages/
+Package.resolved
+
+# macOS metadata
+.DS_Store
+
+# User credentials & config
+.env
+
+# Compiled app bundle
+AppHealthDashboard.app/
+test.iconset/
