@@ -6,6 +6,7 @@ public struct AppSecurityView: View {
     @State private var isDragging = false
     @State private var isScanning = false
     @State private var scanResult: SecurityScanResult? = nil
+    @State private var scanHistory: [String] = []
     
     public init() {}
     
@@ -96,6 +97,57 @@ public struct AppSecurityView: View {
                             .disabled(isScanning)
                         }
                     }
+                }
+                
+                // History Section
+                if !scanHistory.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Label("Recently Checked Apps", systemImage: "clock.arrow.circlepath")
+                                .font(.headline)
+                            Spacer()
+                            Button(action: clearHistory) {
+                                Text("Clear")
+                                    .font(.caption)
+                                    .foregroundColor(.themeDanger)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(scanHistory, id: \.self) { path in
+                                    Button(action: {
+                                        selectedAppPath = path
+                                        runScan()
+                                    }) {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "app")
+                                                .foregroundColor(.accentColor)
+                                            Text(URL(fileURLWithPath: path).lastPathComponent)
+                                                .fontWeight(.medium)
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Color.themeCardBg)
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(selectedAppPath == path ? Color.accentColor : Color.themeBorder, lineWidth: 1)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(Color.themeCardBg.opacity(0.4))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.themeBorder, lineWidth: 1)
+                    )
                 }
                 
                 // Scan loading state
@@ -332,6 +384,9 @@ public struct AppSecurityView: View {
             }
             .padding()
         }
+        .onAppear {
+            loadHistory()
+        }
     }
     
     private func selectAppBundle() {
@@ -356,6 +411,8 @@ public struct AppSecurityView: View {
         isScanning = true
         scanResult = nil
         
+        addToHistory(path: selectedAppPath)
+        
         let scanner = AppSecurityScanner()
         Task {
             let res = await scanner.scan(bundlePath: selectedAppPath)
@@ -365,6 +422,27 @@ public struct AppSecurityView: View {
                     self.isScanning = false
                 }
             }
+        }
+    }
+    
+    private func loadHistory() {
+        self.scanHistory = UserDefaults.standard.stringArray(forKey: "com.taytay.AppHealthDashboard.scanHistory") ?? []
+    }
+    
+    private func addToHistory(path: String) {
+        var current = self.scanHistory.filter { $0 != path }
+        current.insert(path, at: 0)
+        if current.count > 10 {
+            current = Array(current.prefix(10))
+        }
+        self.scanHistory = current
+        UserDefaults.standard.set(current, forKey: "com.taytay.AppHealthDashboard.scanHistory")
+    }
+    
+    private func clearHistory() {
+        withAnimation {
+            self.scanHistory = []
+            UserDefaults.standard.removeObject(forKey: "com.taytay.AppHealthDashboard.scanHistory")
         }
     }
 }
