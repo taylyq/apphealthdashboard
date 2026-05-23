@@ -3,11 +3,7 @@ import UniformTypeIdentifiers
 
 public struct AppSecurityView: View {
     @EnvironmentObject var appState: AppState
-    @State private var selectedAppPath: String = ""
     @State private var isDragging = false
-    @State private var isScanning = false
-    @State private var scanResult: SecurityScanResult? = nil
-    @State private var scanHistory: [String] = []
     
     public init() {}
     
@@ -58,8 +54,7 @@ public struct AppSecurityView: View {
                             
                             if let url = pathURL {
                                 DispatchQueue.main.async {
-                                    self.selectedAppPath = url.path
-                                    self.runScan()
+                                    appState.activeAppPath = url.path
                                 }
                             }
                         }
@@ -67,12 +62,12 @@ public struct AppSecurityView: View {
                     }
                     
                     HStack {
-                        if !selectedAppPath.isEmpty {
+                        if !appState.activeAppPath.isEmpty {
                             HStack {
                                 Image(systemName: "app.dashed")
                                     .font(.title3)
                                     .foregroundColor(.accentColor)
-                                Text(URL(fileURLWithPath: selectedAppPath).lastPathComponent)
+                                Text(URL(fileURLWithPath: appState.activeAppPath).lastPathComponent)
                                     .fontWeight(.medium)
                                     .textSelection(.enabled)
                                 Spacer()
@@ -83,11 +78,11 @@ public struct AppSecurityView: View {
                         Button(action: selectAppBundle) {
                             Label("Browse App...", systemImage: "folder.badge.plus")
                         }
-                        .disabled(isScanning)
+                        .disabled(appState.isScanningSecurity)
                         
-                        if !selectedAppPath.isEmpty {
-                            Button(action: runScan) {
-                                if isScanning {
+                        if !appState.activeAppPath.isEmpty {
+                            Button(action: { appState.runSecurityScan() }) {
+                                if appState.isScanningSecurity {
                                     ProgressView()
                                         .controlSize(.small)
                                 } else {
@@ -95,19 +90,19 @@ public struct AppSecurityView: View {
                                 }
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(isScanning)
+                            .disabled(appState.isScanningSecurity)
                         }
                     }
                 }
                 
                 // History Section
-                if !scanHistory.isEmpty {
+                if !appState.scanHistory.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Label("Recently Checked Apps", systemImage: "clock.arrow.circlepath")
                                 .font(.headline)
                             Spacer()
-                            Button(action: clearHistory) {
+                            Button(action: { appState.clearHistory() }) {
                                 Text("Clear")
                                     .font(.caption)
                                     .foregroundColor(.themeDanger)
@@ -117,10 +112,9 @@ public struct AppSecurityView: View {
                         
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                ForEach(scanHistory, id: \.self) { path in
+                                ForEach(appState.scanHistory, id: \.self) { path in
                                     Button(action: {
-                                        selectedAppPath = path
-                                        runScan()
+                                        appState.activeAppPath = path
                                     }) {
                                         HStack(spacing: 8) {
                                             Image(systemName: "app")
@@ -134,7 +128,7 @@ public struct AppSecurityView: View {
                                         .cornerRadius(8)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 8)
-                                                .stroke(selectedAppPath == path ? Color.accentColor : Color.themeBorder, lineWidth: 1)
+                                                .stroke(appState.activeAppPath == path ? Color.accentColor : Color.themeBorder, lineWidth: 1)
                                         )
                                     }
                                     .buttonStyle(.plain)
@@ -152,7 +146,7 @@ public struct AppSecurityView: View {
                 }
                 
                 // Scan loading state
-                if isScanning {
+                if appState.isScanningSecurity {
                     HStack {
                         Spacer()
                         VStack(spacing: 12) {
@@ -164,7 +158,7 @@ public struct AppSecurityView: View {
                         Spacer()
                     }
                     .padding(.vertical, 40)
-                } else if let result = scanResult {
+                } else if let result = appState.securityScanResult {
                     // Result Content
                     VStack(alignment: .leading, spacing: 20) {
                         
@@ -385,9 +379,6 @@ public struct AppSecurityView: View {
             }
             .padding()
         }
-        .onAppear {
-            loadHistory()
-        }
     }
     
     private func selectAppBundle() {
@@ -401,196 +392,8 @@ public struct AppSecurityView: View {
         
         if panel.runModal() == .OK {
             if let url = panel.url {
-                self.selectedAppPath = url.path
-                self.runScan()
+                appState.activeAppPath = url.path
             }
-        }
-    }
-    
-    private func runScan() {
-        guard !selectedAppPath.isEmpty else { return }
-        isScanning = true
-        scanResult = nil
-        
-        addToHistory(path: selectedAppPath)
-        
-        // Auto-detect and switch GitHub repo if app is inside a Git repository
-        if let gitRepo = findGitRepo(for: selectedAppPath) {
-            DispatchQueue.main.async {
-                withAnimation {
-                    self.appState.selectedRepo = gitRepo
-                }
-            }
-        } else {
-            DispatchQueue.main.async {
-                withAnimation {
-                    self.appState.selectedRepo = ""
-                }
-            }
-        }
-        
-        // Auto-detect and load MySQL credentials from a local .env file
-        findAndLoadEnv(for: selectedAppPath)
-        
-        let scanner = AppSecurityScanner()
-        Task {
-            let res = await scanner.scan(bundlePath: selectedAppPath)
-            DispatchQueue.main.async {
-                withAnimation {
-                    self.scanResult = res
-                    self.isScanning = false
-                }
-            }
-        }
-    }
-    
-    private func loadHistory() {
-        self.scanHistory = UserDefaults.standard.stringArray(forKey: "com.taytay.AppHealthDashboard.scanHistory") ?? []
-    }
-    
-    private func addToHistory(path: String) {
-        var current = self.scanHistory.filter { $0 != path }
-        current.insert(path, at: 0)
-        if current.count > 10 {
-            current = Array(current.prefix(10))
-        }
-        self.scanHistory = current
-        UserDefaults.standard.set(current, forKey: "com.taytay.AppHealthDashboard.scanHistory")
-    }
-    
-    private func clearHistory() {
-        withAnimation {
-            self.scanHistory = []
-            UserDefaults.standard.removeObject(forKey: "com.taytay.AppHealthDashboard.scanHistory")
-        }
-    }
-    
-    private func findGitRepo(for path: String) -> String? {
-        let fileManager = FileManager.default
-        var currentURL = URL(fileURLWithPath: path)
-        
-        // Traverse up the directory tree to find a .git folder
-        for _ in 0..<5 {
-            let gitDir = currentURL.appendingPathComponent(".git")
-            if fileManager.fileExists(atPath: gitDir.path) {
-                return runGitRemoteUrl(in: currentURL.path)
-            }
-            currentURL = currentURL.deletingLastPathComponent()
-            if currentURL.path == "/" || currentURL.path.isEmpty { break }
-        }
-        return nil
-    }
-    
-    private func runGitRemoteUrl(in directory: String) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["remote", "get-url", "origin"]
-        process.currentDirectoryURL = URL(fileURLWithPath: directory)
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        
-        do {
-            try process.run()
-            process.waitUntilExit()
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
-                return parseGitHubRepo(from: output)
-            }
-        } catch {
-            print("Failed to run git remote get-url: \(error)")
-        }
-        return nil
-    }
-    
-    private func parseGitHubRepo(from urlString: String) -> String? {
-        var cleanUrl = urlString
-        if cleanUrl.hasSuffix(".git") {
-            cleanUrl = String(cleanUrl.dropLast(4))
-        }
-        
-        if cleanUrl.contains("github.com") {
-            if let range = cleanUrl.range(of: "github.com/") {
-                let suffix = cleanUrl[range.upperBound...]
-                return String(suffix)
-            } else if let range = cleanUrl.range(of: "github.com:") {
-                let suffix = cleanUrl[range.upperBound...]
-                return String(suffix)
-            }
-        }
-        return nil
-    }
-    
-    private func findAndLoadEnv(for path: String) {
-        let fileManager = FileManager.default
-        var currentURL = URL(fileURLWithPath: path)
-        
-        // Traverse up the directory tree to find a .env file
-        for _ in 0..<5 {
-            let envFile = currentURL.appendingPathComponent(".env")
-            if fileManager.fileExists(atPath: envFile.path) {
-                loadEnvFile(at: envFile.path)
-                return
-            }
-            currentURL = currentURL.deletingLastPathComponent()
-            if currentURL.path == "/" || currentURL.path.isEmpty { break }
-        }
-        
-        // Fallback: check inside bundle Contents/Resources/.env
-        let bundleEnv = URL(fileURLWithPath: path).appendingPathComponent("Contents/Resources/.env")
-        if fileManager.fileExists(atPath: bundleEnv.path) {
-            loadEnvFile(at: bundleEnv.path)
-            return
-        }
-        
-        // No .env file found: clear credentials in AppState
-        DispatchQueue.main.async {
-            withAnimation {
-                self.appState.dbHost = ""
-                self.appState.dbPort = "3306"
-                self.appState.dbUser = ""
-                self.appState.dbPass = ""
-                self.appState.dbName = ""
-            }
-        }
-    }
-    
-    private func loadEnvFile(at path: String) {
-        do {
-            let content = try String(contentsOfFile: path, encoding: .utf8)
-            let lines = content.components(separatedBy: .newlines)
-            var env: [String: String] = [:]
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-                let parts = trimmed.split(separator: "=", maxSplits: 1).map(String.init)
-                if parts.count == 2 {
-                    let key = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-                    var val = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-                    if (val.hasPrefix("\"") && val.hasSuffix("\"")) || (val.hasPrefix("'") && val.hasSuffix("'")) {
-                        val = String(val.dropFirst().dropLast())
-                    }
-                    env[key] = val
-                }
-            }
-            
-            // Update AppState credentials
-            DispatchQueue.main.async {
-                withAnimation {
-                    if let host = env["DB_HOST"] { self.appState.dbHost = host }
-                    if let port = env["DB_PORT"] { self.appState.dbPort = port }
-                    if let user = env["DB_USER"] { self.appState.dbUser = user }
-                    if let pass = env["DB_PASSWORD"] { self.appState.dbPass = pass }
-                    if let name = env["DB_NAME"] { self.appState.dbName = name }
-                    
-                    // Also reload repository if GITHUB_REPO is specified
-                    if let repo = env["GITHUB_REPO"] { self.appState.selectedRepo = repo }
-                }
-            }
-        } catch {
-            print("Failed to load env file at \(path): \(error)")
         }
     }
 }

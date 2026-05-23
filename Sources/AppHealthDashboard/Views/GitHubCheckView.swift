@@ -110,7 +110,6 @@ public struct GitHubCheckView: View {
                     if let status = overallStatus {
                         let isGreen = status.indicator == "none"
                         let isYellow = status.indicator == "minor"
-                        let isRed = status.indicator == "major" || status.indicator == "critical"
                         
                         HStack(spacing: 15) {
                             Circle()
@@ -206,6 +205,9 @@ public struct GitHubCheckView: View {
             .padding()
         }
         .onAppear {
+            refreshAll()
+        }
+        .onChange(of: appState.activeAppPath) { oldValue, newValue in
             refreshAll()
         }
     }

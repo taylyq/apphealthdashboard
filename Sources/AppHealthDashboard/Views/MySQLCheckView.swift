@@ -138,6 +138,9 @@ public struct MySQLCheckView: View {
             }
             .padding()
         }
+        .onChange(of: appState.activeAppPath) { oldValue, newValue in
+            connectionResult = nil
+        }
     }
     
     private func prePopulateCredentials() {
