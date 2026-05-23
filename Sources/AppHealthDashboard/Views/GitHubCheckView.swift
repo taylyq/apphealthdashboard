@@ -107,7 +107,40 @@ public struct GitHubCheckView: View {
                     Text("GitHub System Status")
                         .font(.headline)
                     
-                    if let status = overallStatus {
+                    if appState.selectedRepo.isEmpty {
+                        HStack(spacing: 15) {
+                            Circle()
+                                .fill(Color.secondary)
+                                .frame(width: 14, height: 14)
+                                .shadow(color: Color.secondary.opacity(0.4), radius: 4)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Repository Not Configured")
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+                                Text("Select an app with a Git origin repository or enter a repository path.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            
+                            Text("Not Monitored")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary)
+                                .cornerRadius(6)
+                        }
+                        .padding()
+                        .background(Color.themeCardBg)
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.themeBorder, lineWidth: 1)
+                        )
+                    } else if let status = overallStatus {
                         let isGreen = status.indicator == "none"
                         let isYellow = status.indicator == "minor"
                         
@@ -143,7 +176,7 @@ public struct GitHubCheckView: View {
                                 .stroke(Color.themeBorder, lineWidth: 1)
                         )
                     } else {
-                        HStack {
+                        HStack(spacing: 12) {
                             ProgressView()
                                 .controlSize(.small)
                             Text("Fetching system status...")
@@ -151,6 +184,12 @@ public struct GitHubCheckView: View {
                                 .font(.subheadline)
                         }
                         .padding()
+                        .background(Color.themeCardBg)
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.themeBorder, lineWidth: 1)
+                        )
                     }
                 }
                 
@@ -218,6 +257,13 @@ public struct GitHubCheckView: View {
     }
     
     private func refreshAll() {
+        guard !appState.selectedRepo.isEmpty else {
+            self.overallStatus = nil
+            self.workflowRuns = []
+            self.isRefreshing = false
+            return
+        }
+        
         isRefreshing = true
         errorMessage = nil
         
@@ -227,12 +273,7 @@ public struct GitHubCheckView: View {
         Task {
             do {
                 let status = try await monitor.fetchOverallStatus()
-                let runs: [GitHubWorkflowRun]
-                if !repo.isEmpty {
-                    runs = try await monitor.fetchLatestWorkflowRuns(for: repo)
-                } else {
-                    runs = []
-                }
+                let runs = try await monitor.fetchLatestWorkflowRuns(for: repo)
                 
                 DispatchQueue.main.async {
                     withAnimation {
