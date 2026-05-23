@@ -421,6 +421,12 @@ public struct AppSecurityView: View {
                     self.appState.selectedRepo = gitRepo
                 }
             }
+        } else {
+            DispatchQueue.main.async {
+                withAnimation {
+                    self.appState.selectedRepo = ""
+                }
+            }
         }
         
         // Auto-detect and load MySQL credentials from a local .env file
@@ -536,6 +542,18 @@ public struct AppSecurityView: View {
         let bundleEnv = URL(fileURLWithPath: path).appendingPathComponent("Contents/Resources/.env")
         if fileManager.fileExists(atPath: bundleEnv.path) {
             loadEnvFile(at: bundleEnv.path)
+            return
+        }
+        
+        // No .env file found: clear credentials in AppState
+        DispatchQueue.main.async {
+            withAnimation {
+                self.appState.dbHost = ""
+                self.appState.dbPort = "3306"
+                self.appState.dbUser = ""
+                self.appState.dbPass = ""
+                self.appState.dbName = ""
+            }
         }
     }
     
