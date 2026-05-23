@@ -138,9 +138,6 @@ public struct MySQLCheckView: View {
             }
             .padding()
         }
-        .onAppear {
-            prePopulateCredentials()
-        }
     }
     
     private func prePopulateCredentials() {

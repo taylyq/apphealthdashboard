@@ -206,7 +206,6 @@ public struct GitHubCheckView: View {
             .padding()
         }
         .onAppear {
-            prePopulateSettings()
             refreshAll()
         }
     }
